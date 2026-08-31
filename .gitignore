@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+creds.txt
+.vercel/
+coverage/
+*.log
+.DS_Store
+.vite/
+

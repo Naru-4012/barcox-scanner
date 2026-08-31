@@ -1,0 +1,66 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- HD Logo Version for branding -->
+  <defs>
+    <linearGradient id="hdGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#b635db;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#6b1d8a;stop-opacity:1" />
+    </linearGradient>
+    <filter id="hdShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <!-- Main Circular Background -->
+  <circle cx="256" cy="256" r="245" fill="url(#hdGradient)" filter="url(#hdShadow)"/>
+  
+  <!-- Subtle QR Pattern Background -->
+  <g opacity="0.1">
+    <rect x="140" y="140" width="24" height="24" fill="white" rx="2"/>
+    <rect x="180" y="140" width="24" height="24" fill="white" rx="2"/>
+    <rect x="220" y="140" width="24" height="24" fill="white" rx="2"/>
+    <rect x="340" y="140" width="24" height="24" fill="white" rx="2"/>
+    <rect x="380" y="140" width="24" height="24" fill="white" rx="2"/>
+    
+    <rect x="140" y="220" width="24" height="24" fill="white" rx="2"/>
+    <rect x="380" y="220" width="24" height="24" fill="white" rx="2"/>
+    
+    <rect x="140" y="300" width="24" height="24" fill="white" rx="2"/>
+    <rect x="260" y="300" width="24" height="24" fill="white" rx="2"/>
+    <rect x="380" y="300" width="24" height="24" fill="white" rx="2"/>
+    
+    <rect x="140" y="380" width="24" height="24" fill="white" rx="2"/>
+    <rect x="380" y="380" width="24" height="24" fill="white" rx="2"/>
+  </g>
+
+  <!-- Barcode Symbol - Main Icon -->
+  <g opacity="0.98">
+    <!-- Barcode Vertical Lines -->
+    <rect x="170" y="210" width="6" height="100" fill="white" rx="3"/>
+    <rect x="190" y="210" width="4" height="100" fill="white"/>
+    <rect x="206" y="210" width="8" height="100" fill="white" rx="4"/>
+    <rect x="228" y="210" width="6" height="100" fill="white" rx="3"/>
+    <rect x="248" y="210" width="4" height="100" fill="white"/>
+    <rect x="264" y="210" width="6" height="100" fill="white" rx="3"/>
+    <rect x="284" y="210" width="8" height="100" fill="white" rx="4"/>
+    <rect x="306" y="210" width="4" height="100" fill="white"/>
+    <rect x="322" y="210" width="6" height="100" fill="white" rx="3"/>
+    
+    <!-- Animated Scanning Line -->
+    <line x1="160" y1="230" x2="352" y2="230" stroke="white" stroke-width="4" opacity="0.7" stroke-linecap="round"/>
+    
+    <!-- Text "BAR" under barcode -->
+    <text x="256" y="350" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="white" text-anchor="middle" opacity="0.8">BAR</text>
+  </g>
+
+  <!-- Outer Ring -->
+  <circle cx="256" cy="256" r="245" fill="none" stroke="white" stroke-width="3" opacity="0.4"/>
+  <circle cx="256" cy="256" r="240" fill="none" stroke="white" stroke-width="1.5" opacity="0.2"/>
+
+  <!-- Corner Accent Elements -->
+  <g opacity="0.7">
+    <circle cx="200" cy="180" r="4" fill="white"/>
+    <circle cx="312" cy="190" r="3" fill="white"/>
+    <circle cx="320" cy="300" r="4" fill="white"/>
+    <circle cx="190" cy="350" r="3" fill="white"/>
+  </g>
+</svg>
