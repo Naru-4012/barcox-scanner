@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Item } from '../../src/types'
-import { getMostRecentlyScannedItem, removeItemById, renumberItems } from '../../src/utils/items'
+import { getMostRecentlyScannedItem, removeItemById, renumberItems, updateItemById } from '../../src/utils/items'
 
 function createItem(id: string, itemNumber: number, weight: number, scannedAt: string, product?: string): Item {
   return {
@@ -38,6 +38,19 @@ describe('item list identity and numbering', () => {
       { id: 'a', itemNumber: 1, product: undefined },
       { id: 'b', itemNumber: 2, product: 'Bracelet' },
     ])
+  })
+
+  it('updates only the selected item by ID and preserves the other records', () => {
+    const items = [
+      createItem('a', 1, 10, '2026-11-09T10:00:00.000Z', 'Ring'),
+      createItem('b', 2, 20, '2026-11-09T10:01:00.000Z', 'Chain'),
+    ]
+
+    expect(updateItemById(items, 'b', { weight: 21.5, unit: 'g', product: 'Necklace' })).toEqual([
+      items[0],
+      { ...items[1], weight: 21.5, product: 'Necklace' },
+    ])
+    expect(items[1].weight).toBe(20)
   })
 
   it('finds the latest scanned weight independent of list order', () => {

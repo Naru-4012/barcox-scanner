@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Pencil, Trash2 } from 'lucide-react'
 import { Login } from '../Login/Login'
 import { Metric } from '../../components/common/Metric'
 import { Navbar } from '../../components/layout/Navbar'
@@ -10,10 +10,10 @@ import { loadRemoteSession, saveRemoteSession } from '../../features/session/api
 import { clearSession, loadSession, saveSession } from '../../features/session/services/sessionStorage'
 import { useOnlineStatus } from '../../hooks/useOnlineStatus'
 import { supabase } from '../../services/supabaseClient'
-import { EMPTY_SESSION, type Item, type ParsedItem, type Session } from '../../types'
+import { EMPTY_SESSION, MAX_ITEM_WEIGHT, MAX_SESSION_ITEMS, type Item, type ParsedItem, type Session } from '../../types'
 import { getPageItems, getPaginationPages, ITEMS_PER_PAGE } from '../../utils/pagination'
-import { getMostRecentlyScannedItem, removeItemById, renumberItems } from '../../utils/items'
-import { isKeyboardScannerBurst, updateScannerKeyTiming } from '../../utils/scannerKeyboard'
+import { getMostRecentlyScannedItem, removeItemById, renumberItems, updateItemById } from '../../utils/items'
+import { resolveScanInput, updateScannerKeyTiming } from '../../utils/scannerKeyboard'
 
 const CameraScanner = lazy(() => import('../../features/scanner/components/CameraScanner').then(module => ({ default: module.CameraScanner })))
 
@@ -36,19 +36,28 @@ export default function Dashboard() {
   const [inputFormat, setInputFormat] = useState('')
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
+  const [remoteError, setRemoteError] = useState('')
   const [weightPrompt, setWeightPrompt] = useState('')
   const [pendingDeleteItemId, setPendingDeleteItemId] = useState<string | null>(null)
+  const [editingItemId, setEditingItemId] = useState<string | null>(null)
+  const [editProduct, setEditProduct] = useState('')
+  const [editWeight, setEditWeight] = useState('')
+  const [editSize, setEditSize] = useState('')
+  const [editError, setEditError] = useState('')
   const [catalogLookupInProgress, setCatalogLookupInProgress] = useState(false)
-  const [remoteSyncMessage, setRemoteSyncMessage] = useState('')
   const online = useOnlineStatus()
   const [shareModal, setShareModal] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
 
   const scanInputRef = useRef<HTMLInputElement>(null)
   const cancelDeleteButtonRef = useRef<HTMLButtonElement>(null)
+  const editWeightInputRef = useRef<HTMLInputElement>(null)
   const deleteTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const editTriggerRef = useRef<HTMLButtonElement | null>(null)
   const historyInitialized = useRef(false)
+  const remoteRestoreAttemptedRef = useRef(false)
   const catalogLookupRef = useRef(false)
+  const lastSyncedSessionRef = useRef<Session | null | undefined>(undefined)
   const pendingScanRef = useRef<{ raw: string; format?: string } | null>(null)
   const scannerKeysRef = useRef({ lastKeyAt: 0, fastKeyCount: 0 })
   const processingScanRef = useRef(false)
@@ -58,25 +67,35 @@ export default function Dashboard() {
     if (!supabase) { setAuthReady(true); return }
     let mounted = true
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (mounted) { setUserEmail(session?.user.email ?? ''); setAuthReady(true) }
+      if (mounted) {
+        if (!session) {
+          remoteRestoreAttemptedRef.current = false
+          lastSyncedSessionRef.current = undefined
+        }
+        setUserEmail(session?.user.email ?? '')
+        setAuthReady(true)
+      }
     })
     return () => { mounted = false; listener.subscription.unsubscribe() }
   }, [])
 
   useEffect(() => {
-    if (!signedIn || session.number) return
+    if (!signedIn || remoteRestoreAttemptedRef.current) return
+    remoteRestoreAttemptedRef.current = true
+    if (session.number) return
     let cancelled = false
     void loadRemoteSession().then(remoteSession => {
       if (cancelled || !remoteSession) return
       setSession(remoteSession)
+      lastSyncedSessionRef.current = remoteSession
       setBusiness(remoteSession.business)
       setProductName(remoteSession.productName ?? '')
       setSetup(false)
       setCurrentPage(1)
     }).catch(restoreError => {
       if (!cancelled) {
-        const message = restoreError instanceof Error ? restoreError.message : 'Unknown restore error.'
-        setRemoteSyncMessage(`Cloud restore failed: ${message}`)
+        console.error('Could not restore the saved session.', restoreError)
+        setRemoteError('Could not load your saved session. Check your connection and try again.')
       }
     })
     return () => { cancelled = true }
@@ -87,24 +106,22 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!signedIn || !session.business || !session.number) return
-    if (!online) {
-      setRemoteSyncMessage('Offline; saved locally and will sync when reconnected')
-      return
-    }
+    if (!online) return
 
     let cancelled = false
     const timer = window.setTimeout(() => {
-      setRemoteSyncMessage('Syncing to Supabase...')
       remoteSaveQueueRef.current = remoteSaveQueueRef.current
         .then(async () => {
           if (cancelled) return
-          await saveRemoteSession(session)
-          if (!cancelled) setRemoteSyncMessage('Synced to Supabase')
+          await saveRemoteSession(session, lastSyncedSessionRef.current)
+          if (!cancelled) {
+            lastSyncedSessionRef.current = session
+            setRemoteError('')
+          }
         })
         .catch(syncError => {
           if (!cancelled) {
-            const message = syncError instanceof Error ? syncError.message : 'Unknown sync error.'
-            setRemoteSyncMessage(`Cloud sync failed: ${message}`)
+            console.error('Could not sync the saved session.', syncError)
           }
         })
     }, 400)
@@ -144,9 +161,10 @@ export default function Dashboard() {
   }, [signedIn, setup])
 
   const total = useMemo(() => session.items.reduce((sum, item) => sum + weightInGrams(item.weight, item.unit), 0), [session.items])
-  const barcodeOrQrScanned = useMemo(() => session.items.filter(item => item.scanType === 'qr' || item.scanType === 'barcode').length, [session.items])
+  const totalItemsScanned = session.items.length
   const previousItem = useMemo(() => getMostRecentlyScannedItem(session.items), [session.items])
   const pendingDeleteItem = session.items.find(item => item.id === pendingDeleteItemId)
+  const editingItem = session.items.find(item => item.id === editingItemId)
   const pageCount = Math.ceil(session.items.length / ITEMS_PER_PAGE)
   const activePage = Math.min(currentPage, Math.max(pageCount, 1))
   const visibleItems = useMemo(() => getPageItems(session.items, activePage), [activePage, session.items])
@@ -180,6 +198,21 @@ export default function Dashboard() {
     return () => window.removeEventListener('keydown', handleDeleteDialogKeyDown)
   }, [pendingDeleteItem])
 
+  useEffect(() => {
+    if (!editingItem) return
+    editWeightInputRef.current?.focus()
+
+    function handleEditDialogKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        cancelItemEdit()
+      }
+    }
+
+    window.addEventListener('keydown', handleEditDialogKeyDown)
+    return () => window.removeEventListener('keydown', handleEditDialogKeyDown)
+  }, [editingItem])
+
   function showNewestItems() {
     setCurrentPage(1)
   }
@@ -188,10 +221,18 @@ export default function Dashboard() {
   function beginSession(event: React.FormEvent) {
     event.preventDefault(); if (!business.trim()) return
     const nextNumber = makeSessionNumber(business.trim())
+    lastSyncedSessionRef.current = null
     setSession({ business: business.trim(), productName: productName.trim(), number: nextNumber, items: [], status: 'active' }); setSetup(false); setNotice('Your scanning session is ready.')
+    setError('')
+    setRemoteError('')
   }
 
   function addParsed(parsed: ParsedItem) {
+    if (session.items.length >= MAX_SESSION_ITEMS) {
+      setError(`This session is limited to ${MAX_SESSION_ITEMS.toLocaleString('en-IN')} items. Start a new session to continue.`)
+      return
+    }
+
     setNotice(`${formatWeight(parsed.weight, parsed.unit)} added to session`)
     showNewestItems()
     setSession(current => {
@@ -228,11 +269,11 @@ export default function Dashboard() {
       if (catalogItem) return { status: 'ready', item: { ...catalogItem, raw: raw.trim() } }
       return { status: 'weight-required', code: lookupCode }
     } catch (lookupError) {
-      const message = lookupError instanceof Error ? lookupError.message : 'Unknown lookup error.'
+      console.error('Could not look up the scanned product.', lookupError)
       return {
         status: 'weight-required',
         code: lookupCode,
-        warning: `Catalogue lookup failed; you can still enter the printed weight. Check Supabase setup. ${message}`,
+        warning: 'Product details could not be found. Enter the printed weight manually to add this item.',
       }
     } finally {
       catalogLookupRef.current = false
@@ -270,23 +311,25 @@ export default function Dashboard() {
       return
     }
 
-    const now = performance.now()
-    const isScannerBurst = isKeyboardScannerBurst(scannerKeysRef.current, now)
+    const scanInput = resolveScanInput(
+      cleanInput,
+      scannerKeysRef.current,
+      performance.now(),
+      pendingScanRef.current,
+      inputFormat,
+    )
     scannerKeysRef.current = { lastKeyAt: 0, fastKeyCount: 0 }
-    const pendingScan = isScannerBurst ? null : pendingScanRef.current
-    if (isScannerBurst) pendingScanRef.current = null
-    const raw = pendingScan?.raw ?? (isScannerBurst ? cleanInput : '')
-    const manualWeight = pendingScan ? cleanInput : isScannerBurst ? '' : cleanInput
-    const format = pendingScan?.format ?? inputFormat
+    const hasPendingScan = pendingScanRef.current !== null
+    if (hasPendingScan || scanInput.raw) pendingScanRef.current = null
 
     processingScanRef.current = true
     try {
-      let resolution = await resolveScan(raw, manualWeight, format)
-      if (resolution.status === 'error' && !pendingScan && !isScannerBurst) {
-        resolution = await resolveScan(cleanInput, '', format)
+      let resolution = await resolveScan(scanInput.raw, scanInput.manualWeight, scanInput.format)
+      if (resolution.status === 'error' && !hasPendingScan && !scanInput.raw) {
+        resolution = await resolveScan(cleanInput, '', scanInput.format)
       }
       if (resolution.status !== 'ready') {
-        showScanResolution(resolution, raw || cleanInput, format)
+        showScanResolution(resolution, scanInput.raw || cleanInput, scanInput.format)
         return
       }
       playScanFeedback()
@@ -327,6 +370,46 @@ export default function Dashboard() {
     setCurrentPage(current => Math.min(current, Math.max(nextPageCount, 1)))
     setPendingDeleteItemId(null)
     setNotice(`Item #${item.itemNumber} removed`)
+  }
+
+  function beginItemEdit(item: Item, trigger: HTMLButtonElement) {
+    editTriggerRef.current = trigger
+    setEditingItemId(item.id)
+    setEditProduct(item.product ?? '')
+    setEditWeight(String(weightInGrams(item.weight, item.unit)))
+    setEditSize(item.size ?? '')
+    setEditError('')
+  }
+
+  function cancelItemEdit() {
+    setEditingItemId(null)
+    setEditError('')
+    requestAnimationFrame(() => editTriggerRef.current?.focus())
+  }
+
+  function saveItemEdit(event: React.FormEvent) {
+    event.preventDefault()
+    if (!editingItemId) return
+    const weightText = editWeight.trim()
+    const weight = Number(weightText)
+    if (!/^\d+(?:\.\d{1,3})?$/.test(weightText) || !Number.isFinite(weight) || weight <= 0 || weight > MAX_ITEM_WEIGHT) {
+      setEditError(`Enter a weight greater than 0 and no more than ${MAX_ITEM_WEIGHT.toLocaleString('en-IN')} grams, with up to 3 decimal places.`)
+      return
+    }
+
+    setSession(current => ({
+      ...current,
+      items: updateItemById(current.items, editingItemId, {
+        product: editProduct.trim() || undefined,
+        weight,
+        unit: 'g',
+        size: editSize.trim() || undefined,
+      }),
+    }))
+    setEditingItemId(null)
+    setEditError('')
+    setNotice('Item updated.')
+    requestAnimationFrame(() => editTriggerRef.current?.focus())
   }
 
   function trackScannerKey(event: React.KeyboardEvent<HTMLInputElement>) {
@@ -415,6 +498,7 @@ export default function Dashboard() {
 
   /* ── new session / reset (Bug #6) ── */
   function startNewSession() {
+    lastSyncedSessionRef.current = null
     setSession({ business: '', productName: '', number: '', items: [], status: 'active' })
     setCurrentPage(1)
     setBusiness('')
@@ -424,6 +508,7 @@ export default function Dashboard() {
     setInputFormat('')
     pendingScanRef.current = null
     setError('')
+    setRemoteError('')
     setPendingDeleteItemId(null)
     clearSession()
     setNotice('Ready for a new session.')
@@ -431,6 +516,7 @@ export default function Dashboard() {
 
   /* ── sign in handler ── */
   function handleSignIn() {
+    lastSyncedSessionRef.current = undefined
     clearSession()
     setSession(EMPTY_SESSION)
     setBusiness('')
@@ -440,6 +526,7 @@ export default function Dashboard() {
     setInputFormat('')
     pendingScanRef.current = null
     setError('')
+    setRemoteError('')
     setPendingDeleteItemId(null)
     setCurrentPage(1)
     setShareModal(false)
@@ -459,6 +546,7 @@ export default function Dashboard() {
     }
     setUserEmail('')
     historyInitialized.current = false
+    remoteRestoreAttemptedRef.current = false
   }
 
   if (!authReady) return <div className="login-shell" aria-busy="true"><section className="login-card"><p className="muted">Checking your secure session...</p></section></div>
@@ -470,21 +558,16 @@ export default function Dashboard() {
       {setup ? <section className="setup-view">
         <div className="setup-intro">
           <span className="setup-icon material-symbols-outlined filled">barcode_scanner</span>
-          <h1>Configure Your Command Center</h1>
-          <p>Initialize your scanning session with zero-latency sync and secure data persistence.</p>
+          <h1>Start a new session</h1>
+          <p>Set up a session to start scanning your items.</p>
         </div>
         <div className="setup-card">
           <form onSubmit={beginSession} className="setup-form">
-            <div className="environment-card">
-              <span className="material-symbols-outlined">dns</span>
-              <div><strong>Environment</strong><small>Production Cluster</small></div>
-              <span className="environment-status" aria-label="Production cluster online" />
-            </div>
             <label>Business Name<div className="input-with-icon"><span className="material-symbols-outlined">storefront</span><input autoFocus required maxLength={120} value={business} onChange={event => setBusiness(event.target.value)} placeholder="Enter corporate entity name" /></div></label>
             <label>Product Name<div className="input-with-icon"><span className="material-symbols-outlined">inventory_2</span><input value={productName} onChange={event => setProductName(event.target.value)} placeholder="Optional default for scanned items" maxLength={120} /></div></label>
-            <label className="session-identifier">Session Identifier <span>Auto-generated</span><div className="input-with-icon"><span className="material-symbols-outlined">key</span><input value="" placeholder="Generated when session opens" disabled /></div></label>
-            <div className="setup-submit"><button className="primary-button" type="submit">Open Scanner <span className="material-symbols-outlined">arrow_forward</span></button><p>Secure encrypted connection</p></div>
+            <div className="setup-submit"><button className="primary-button" type="submit">Start Scanning <span className="material-symbols-outlined">arrow_forward</span></button></div>
           </form>
+          {remoteError && <div className="error-message" role="alert">{remoteError}</div>}
         </div>
         <aside className="setup-help" aria-label="Technical assistance contact details">
           <span className="material-symbols-outlined" aria-hidden="true">help_outline</span>
@@ -500,7 +583,6 @@ export default function Dashboard() {
             <div className="eyebrow">Active session <span className="session-pill">{session.status}</span></div>
             <h1>{session.business}</h1>
             {session.productName && <p className="session-product-name">Product: {session.productName}</p>}
-            <p>{session.number} <span className="separator">/</span> Started today</p>
           </div>
           <button className="outline-button" onClick={startNewSession}>
             <span className="material-symbols-outlined">restart_alt</span> New session
@@ -508,7 +590,7 @@ export default function Dashboard() {
         </section>
 
         <section className="metrics">
-          <Metric label="Barcode / QR Scans" value={barcodeOrQrScanned.toString()} icon="qr_code_scanner" />
+          <Metric label="Items Scanned" value={totalItemsScanned.toString()} icon="qr_code_scanner" />
           <Metric label="Previous Weight" value={previousItem ? formatWeight(previousItem.weight, previousItem.unit) : '—'} icon="history" />
           <Metric label="Total net weight" value={formatWeight(total)} icon="scale" />
         </section>
@@ -559,10 +641,7 @@ export default function Dashboard() {
                 {error}
               </div>}
             </form>
-            <div className="scanner-footnote">
-              <span className="material-symbols-outlined" style={{fontSize: '16px'}}>cloud_sync</span>
-              Saved locally first{remoteSyncMessage ? ` · ${remoteSyncMessage}` : online ? ' · waiting to sync' : ' · offline'}
-            </div>
+            {remoteError && <div className="error-message" role="alert">{remoteError}</div>}
           </section>
 
           <aside className="items-panel">
@@ -589,16 +668,25 @@ export default function Dashboard() {
                     <span>{[item.size ? `Size ${item.size}` : '', item.raw].filter(Boolean).join(' · ')}</span>
                   </div>
                   <strong className="item-weight">{formatWeight(item.weight, item.unit)}</strong>
-                  <button
-                    className="item-delete-button"
-                    type="button"
-                    aria-label={`Remove item ${item.itemNumber}: ${getItemDisplayName(item.product, item.itemNumber, item.scanType)}`}
-                    title="Remove item"
-                    onClick={event => {
-                      deleteTriggerRef.current = event.currentTarget
-                      setPendingDeleteItemId(item.id)
-                    }}
-                  ><Trash2 size={17} aria-hidden="true" /></button>
+                  <div className="item-actions">
+                    <button
+                      className="item-edit-button"
+                      type="button"
+                      aria-label={`Edit item ${item.itemNumber}: ${getItemDisplayName(item.product, item.itemNumber, item.scanType)}`}
+                      title="Edit item"
+                      onClick={event => beginItemEdit(item, event.currentTarget)}
+                    ><Pencil size={16} aria-hidden="true" /></button>
+                    <button
+                      className="item-delete-button"
+                      type="button"
+                      aria-label={`Remove item ${item.itemNumber}: ${getItemDisplayName(item.product, item.itemNumber, item.scanType)}`}
+                      title="Remove item"
+                      onClick={event => {
+                        deleteTriggerRef.current = event.currentTarget
+                        setPendingDeleteItemId(item.id)
+                      }}
+                    ><Trash2 size={17} aria-hidden="true" /></button>
+                  </div>
                 </div>)}
               </div>
             </div>}
@@ -704,6 +792,39 @@ export default function Dashboard() {
         </div>
         <p className="share-hint">On mobile, "More Apps" opens your share sheet with Instagram, Snapchat, Telegram, and more.</p>
       </div>
+    </div>}
+    {editingItem && <div className="modal-backdrop" onClick={cancelItemEdit}>
+      <section
+        className="modal edit-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="edit-item-title"
+        onClick={event => event.stopPropagation()}
+      >
+        <h2 id="edit-item-title">Edit item</h2>
+        <form className="edit-item-form" onSubmit={saveItemEdit}>
+          <label>Product Name
+            <input maxLength={2048} value={editProduct} onChange={event => setEditProduct(event.target.value)} />
+          </label>
+          <label>Weight (grams)
+            <input
+              ref={editWeightInputRef}
+              inputMode="decimal"
+              maxLength={16}
+              value={editWeight}
+              onChange={event => { setEditWeight(event.target.value); setEditError('') }}
+            />
+          </label>
+          <label>Size
+            <input maxLength={200} value={editSize} onChange={event => setEditSize(event.target.value)} />
+          </label>
+          {editError && <div className="error-message" role="alert">{editError}</div>}
+          <div className="modal-actions">
+            <button className="outline-button" type="button" onClick={cancelItemEdit}>Cancel</button>
+            <button className="primary-button" type="submit">Save changes</button>
+          </div>
+        </form>
+      </section>
     </div>}
     {pendingDeleteItem && <div className="modal-backdrop" onClick={() => setPendingDeleteItemId(null)}>
       <section

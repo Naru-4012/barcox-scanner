@@ -8,9 +8,9 @@ export function Metric({ label, value, icon }: MetricProps) {
   return (
     <div className="metric">
       <div className="metric-icon">
-        <span className="material-symbols-outlined">{icon}</span>
+        <span aria-hidden="true" className="material-symbols-outlined">{icon}</span>
       </div>
-      <span>{label}</span>
+      <span className="metric-label">{label}</span>
       <strong>{value}</strong>
     </div>
   )

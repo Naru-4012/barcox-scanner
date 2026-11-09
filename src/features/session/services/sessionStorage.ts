@@ -1,4 +1,4 @@
-import { EMPTY_SESSION, type Session } from '../../../types'
+import { EMPTY_SESSION, MAX_ITEM_WEIGHT, MAX_SESSION_ITEMS, type Session } from '../../../types'
 import { z } from 'zod'
 import { renumberItems } from '../../../utils/items'
 
@@ -7,8 +7,8 @@ const itemSchema = z.object({
   itemNumber: z.number().int().positive(),
   raw: z.string().min(1).max(2048),
   product: z.string().max(2048).optional(),
-  weight: z.number().finite().positive(),
-  unit: z.string().min(1).max(12),
+  weight: z.number().finite().positive().max(MAX_ITEM_WEIGHT),
+  unit: z.enum(['g', 'kg', 'mg']),
   size: z.string().max(200).optional(),
   purity: z.string().max(40).optional(),
   scannedAt: z.string().datetime(),
@@ -19,7 +19,7 @@ const sessionSchema = z.object({
   business: z.string().trim().min(1).max(120),
   productName: z.string().trim().max(120).optional(),
   number: z.string().max(40),
-  items: z.array(itemSchema).max(10000),
+  items: z.array(itemSchema).max(MAX_SESSION_ITEMS),
   status: z.enum(['active', 'paused', 'completed']),
   updatedAt: z.string().datetime().optional(),
 })
