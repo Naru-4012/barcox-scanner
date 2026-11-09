@@ -144,7 +144,7 @@ export default function Dashboard() {
   }, [signedIn, setup])
 
   const total = useMemo(() => session.items.reduce((sum, item) => sum + weightInGrams(item.weight, item.unit), 0), [session.items])
-  const barcodeOrQrScanned = useMemo(() => session.items.filter(item => item.scanType === 'qr' || item.scanType === 'barcode').length, [session.items])
+  const totalItemsScanned = session.items.length
   const previousItem = useMemo(() => getMostRecentlyScannedItem(session.items), [session.items])
   const pendingDeleteItem = session.items.find(item => item.id === pendingDeleteItemId)
   const pageCount = Math.ceil(session.items.length / ITEMS_PER_PAGE)
@@ -508,7 +508,7 @@ export default function Dashboard() {
         </section>
 
         <section className="metrics">
-          <Metric label="Barcode / QR Scans" value={barcodeOrQrScanned.toString()} icon="qr_code_scanner" />
+          <Metric label="Items Scanned" value={totalItemsScanned.toString()} icon="qr_code_scanner" />
           <Metric label="Previous Weight" value={previousItem ? formatWeight(previousItem.weight, previousItem.unit) : '—'} icon="history" />
           <Metric label="Total net weight" value={formatWeight(total)} icon="scale" />
         </section>
