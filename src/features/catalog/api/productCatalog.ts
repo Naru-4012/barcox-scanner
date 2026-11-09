@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { ParsedItem } from '../../../types'
+import { MAX_ITEM_WEIGHT, type ParsedItem } from '../../../types'
 import { supabase } from '../../../services/supabaseClient'
 import { getScanTypeFromFormat } from '../../scanner/services/scanner'
 
@@ -33,8 +33,8 @@ export async function lookupProductByCode(code: string, format?: string): Promis
   if (!result.success) throw new Error('The matching catalogue entry has invalid data.')
 
   const weight = Number(result.data.weight)
-  if (!Number.isFinite(weight) || weight <= 0) {
-    throw new Error('The matching catalogue entry must have a positive numeric weight.')
+  if (!Number.isFinite(weight) || weight <= 0 || weight > MAX_ITEM_WEIGHT) {
+    throw new Error('The matching catalogue entry must have a supported positive weight.')
   }
 
   return {

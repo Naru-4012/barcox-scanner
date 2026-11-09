@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { BarcodeFormat } from '@zxing/library'
 import { SUPPORTED_BARCODE_FORMATS } from '../../src/features/scanner/components/CameraScanner'
 import { formatWeight, getCatalogLookupCode, getItemDisplayName, getNextItemNumber, getScanTypeFromFormat, isCatalogCodeCandidate, parseQr } from '../../src/features/scanner/services/scanner'
-import { isKeyboardScannerBurst, updateScannerKeyTiming } from '../../src/utils/scannerKeyboard'
+import { isKeyboardScannerBurst, resolveScanInput, updateScannerKeyTiming } from '../../src/utils/scannerKeyboard'
 
 describe('scanner parsing logic', () => {
   it('enables the requested jewellery label symbologies for camera scans', () => {
@@ -270,6 +270,13 @@ describe('scanner parsing logic', () => {
     expect(parsed).toMatchObject({ error: 'Weight can have up to 3 decimal places.' })
   })
 
+  it('rejects weights outside the supported database range', () => {
+    expect(parseQr('', '1000000000')).toMatchObject({
+      error: 'Weight exceeds the maximum supported value.',
+    })
+    expect(parseQr('', '999999999.999')).toMatchObject({ weight: 999999999.999 })
+  })
+
   it('rejects oversized scanner input', () => {
     expect(parseQr('x'.repeat(2049), '')).toMatchObject({ error: 'Input is too long.' })
   })
@@ -305,5 +312,20 @@ describe('keyboard scanner input', () => {
 
     timing = updateScannerKeyTiming({ lastKeyAt: 1000, fastKeyCount: 4 }, '4', 1100)
     expect(isKeyboardScannerBurst(timing, 1110)).toBe(false)
+  })
+
+  it('keeps a pending camera scan associated with a rapidly entered manual weight', () => {
+    const result = resolveScanInput(
+      '42.44',
+      { lastKeyAt: 1040, fastKeyCount: 5 },
+      1050,
+      { raw: 'QR-ITEM-1', format: 'QR_CODE' },
+    )
+
+    expect(result).toEqual({
+      raw: 'QR-ITEM-1',
+      manualWeight: '42.44',
+      format: 'QR_CODE',
+    })
   })
 })

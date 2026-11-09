@@ -26,6 +26,9 @@ export type Session = {
 
 export type ParsedItem = Omit<Item, 'id' | 'itemNumber' | 'scannedAt'>
 
+export const MAX_ITEM_WEIGHT = 999_999_999.999
+export const MAX_SESSION_ITEMS = 10_000
+
 export const EMPTY_SESSION: Session = {
   business: '',
   productName: '',

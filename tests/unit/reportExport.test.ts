@@ -1,8 +1,14 @@
-import { describe, expect, it } from 'vitest'
-import { buildCsvRows, buildPdfItemCells, getPdfFilename } from '../../src/features/reports/services/reportExport'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { buildCsvContent, buildCsvRows, buildPdfItemCells, downloadCsv, getPdfFilename } from '../../src/features/reports/services/reportExport'
 import type { Session } from '../../src/types'
 
 describe('report export logic', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
   const session: Session = {
     business: 'Vedant Silver',
     productName: 'Silver ornaments',
@@ -53,5 +59,40 @@ describe('report export logic', () => {
   it('omits purity from CSV and PDF report tables', () => {
     expect(buildCsvRows(session)[0]).not.toContain('Purity')
     expect(buildPdfItemCells(session.items[0])).not.toContain('22K')
+  })
+
+  it('neutralizes spreadsheet formulas from scanned CSV text fields', () => {
+    const unsafeSession = {
+      ...session,
+      items: [{
+        ...session.items[0],
+        product: '=HYPERLINK("https://example.invalid","open")',
+        size: '  @SUM(1,2)',
+      }],
+    }
+
+    const csv = buildCsvContent(unsafeSession)
+    expect(csv).toContain(`"'=HYPERLINK(""https://example.invalid"",""open"")"`)
+    expect(csv).toContain(`"'  @SUM(1,2)"`)
+  })
+
+  it('keeps the CSV object URL alive until the browser has started the download', () => {
+    vi.useFakeTimers()
+    const createObjectURL = vi.fn(() => 'blob:barcox-csv')
+    const revokeObjectURL = vi.fn()
+    vi.stubGlobal('URL', { createObjectURL, revokeObjectURL })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      expect(this.isConnected).toBe(true)
+    })
+
+    downloadCsv(session)
+
+    expect(createObjectURL).toHaveBeenCalledOnce()
+    expect(click).toHaveBeenCalledOnce()
+    expect(revokeObjectURL).not.toHaveBeenCalled()
+    expect(document.querySelector('a[download$=".csv"]')).toBeNull()
+
+    vi.advanceTimersByTime(1000)
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:barcox-csv')
   })
 })

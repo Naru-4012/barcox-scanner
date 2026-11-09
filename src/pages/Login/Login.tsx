@@ -14,11 +14,11 @@ export function Login({ onSignIn }: LoginProps) {
     event.preventDefault()
     setLoginError('')
     if (!supabase) {
-      setLoginError('Supabase is not configured for this environment.')
+      setLoginError('Sign-in is unavailable right now. Please contact support.')
       return
     }
     if (!username.trim() || !password) {
-      setLoginError('Enter your Supabase Auth email and password.')
+      setLoginError('Enter your email and password.')
       return
     }
     setSubmitting(true)
@@ -46,7 +46,6 @@ export function Login({ onSignIn }: LoginProps) {
         <h1>Make every<br /><em>scan count.</em></h1>
         <p>One calm workspace for the work that moves your business forward.</p>
       </div>
-      <div className="art-footer">Authorized Personnel Only • Terminal v2.4.1</div>
     </div>
     <section className="login-card">
       <div className="login-brand">
@@ -55,16 +54,15 @@ export function Login({ onSignIn }: LoginProps) {
         </span>
         barco<span className="brand-x">X</span>
       </div>
-      <div className="eyebrow">Terminal Access</div>
       <h2>Sign in to BarcoX</h2>
-      <p className="muted">Authenticate to begin secure session.</p>
+      <p className="muted">Sign in to start scanning.</p>
       <form onSubmit={handleSubmit}>
-        <label>Operator ID<div style={{ position: 'relative' }}>
-          <span className="material-symbols-outlined" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#837283' }}>badge</span>
-          <input autoFocus required type="email" autoComplete="username" value={username} onChange={event => setUsername(event.target.value)} placeholder="OP-XXXX-XXXX" style={{ paddingLeft: '44px' }} />
+        <label>Email<div style={{ position: 'relative' }}>
+          <span aria-hidden="true" className="material-symbols-outlined" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#837283' }}>badge</span>
+          <input autoFocus required type="email" autoComplete="username" value={username} onChange={event => setUsername(event.target.value)} placeholder="you@example.com" style={{ paddingLeft: '44px' }} />
         </div></label>
-        <label>Secure Passcode<div style={{ position: 'relative' }}>
-          <span className="material-symbols-outlined" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#837283' }}>lock</span>
+        <label>Password<div style={{ position: 'relative' }}>
+          <span aria-hidden="true" className="material-symbols-outlined" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#837283' }}>lock</span>
           <input required type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} placeholder="••••••••" style={{ paddingLeft: '44px' }} />
         </div></label>
         <div className="login-help">
@@ -77,12 +75,12 @@ export function Login({ onSignIn }: LoginProps) {
             <a href="tel:+918421681779">+91-8421681779</a>
           </div>}
         </div>
-        {loginError && <div className="login-error">
-          <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>error</span>
+        {loginError && <div className="login-error" role="alert">
+          <span aria-hidden="true" className="material-symbols-outlined" style={{ fontSize: '16px' }}>error</span>
           {loginError}
         </div>}
         <button className="primary-button sign-in-button" type="submit" disabled={submitting}>
-          {submitting ? 'Initializing Session...' : 'Initialize Session'}
+          {submitting ? 'Signing in…' : 'Login'}
           {!submitting && <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>arrow_forward</span>}
         </button>
       </form>

@@ -3,6 +3,9 @@ export type ScannerKeyTiming = {
   fastKeyCount: number
 }
 
+export type PendingScan = { raw: string; format?: string }
+export type ResolvedScanInput = { raw: string; manualWeight: string; format?: string }
+
 export function updateScannerKeyTiming(previous: ScannerKeyTiming, key: string, timestamp: number): ScannerKeyTiming {
   if (key.length !== 1) return previous
 
@@ -14,4 +17,26 @@ export function updateScannerKeyTiming(previous: ScannerKeyTiming, key: string, 
 
 export function isKeyboardScannerBurst(timing: ScannerKeyTiming, timestamp: number): boolean {
   return timing.fastKeyCount >= 4 && timestamp - timing.lastKeyAt < 1000
+}
+
+export function resolveScanInput(
+  input: string,
+  timing: ScannerKeyTiming,
+  timestamp: number,
+  pendingScan: PendingScan | null,
+  inputFormat?: string,
+): ResolvedScanInput {
+  if (pendingScan) {
+    return {
+      raw: pendingScan.raw,
+      manualWeight: input,
+      format: pendingScan.format ?? inputFormat,
+    }
+  }
+
+  if (isKeyboardScannerBurst(timing, timestamp)) {
+    return { raw: input, manualWeight: '', format: inputFormat }
+  }
+
+  return { raw: '', manualWeight: input, format: inputFormat }
 }

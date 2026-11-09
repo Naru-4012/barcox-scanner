@@ -1,5 +1,5 @@
 import { getNextSessionNumber } from '../../session/services/sessionStorage'
-import type { Item, ParsedItem, ScanType } from '../../../types'
+import { MAX_ITEM_WEIGHT, type Item, type ParsedItem, type ScanType } from '../../../types'
 
 const numericQrFormats = new Set(['11', '17'])
 
@@ -225,6 +225,10 @@ export function parseQr(raw: string, manualWeight: string, format?: string): Par
     return { error: 'Weight must be greater than zero.' }
   }
 
+  if (extractedWeight > MAX_ITEM_WEIGHT) {
+    return { error: 'Weight exceeds the maximum supported value.' }
+  }
+
   // Check decimal precision (up to 3 decimal places)
   const weightStr = extractedWeight.toString()
   if (weightStr.includes('.') && weightStr.split('.')[1].length > 3) {
@@ -303,7 +307,8 @@ export function formatWeight(weight: number, unit = 'g') {
 export function makeSessionNumber(vendor: string, date = new Date()) {
   const dateKey = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`
   const nextSequence = getNextSessionNumber(vendor, date)
-  return `BX-${dateKey}-${String(nextSequence).padStart(3, '0')}`
+  const uniqueSuffix = crypto.randomUUID().replaceAll('-', '').slice(0, 16).toUpperCase()
+  return `BX-${dateKey}-${String(nextSequence).padStart(3, '0')}-${uniqueSuffix}`
 }
 
 export function formatDate(date: Date) {

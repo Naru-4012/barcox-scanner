@@ -16,6 +16,16 @@ export function buildCsvRows(session: Session) {
   ]
 }
 
+function escapeCsvValue(value: string | number) {
+  const text = String(value)
+  const safeText = /^[\u0000-\u0020]*[=+\-@]/.test(text) ? `'${text}` : text
+  return `"${safeText.replace(/"/g, '""')}"`
+}
+
+export function buildCsvContent(session: Session) {
+  return buildCsvRows(session).map(row => row.map(escapeCsvValue).join(',')).join('\n')
+}
+
 export function getPdfFilename(session: Session) {
   const safeBusiness = (session.business || 'barcox').replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/_+/g, '_')
   const dateStamp = new Date().toISOString().slice(0, 10)
@@ -42,15 +52,19 @@ export function buildPdfItemCells(item: Item): string[] {
 }
 
 export function downloadCsv(session: Session) {
-  const rows = buildCsvRows(session)
-  const csvText = rows.map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n')
+  const csvText = buildCsvContent(session)
   const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
   link.download = `${session.number || 'barcox-session'}.csv`
-  link.click()
-  URL.revokeObjectURL(url)
+  document.body.append(link)
+  try {
+    link.click()
+  } finally {
+    link.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
 }
 
 export function downloadPdf(session: Session, total: number) {
