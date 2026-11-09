@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { supabase } from '../services/supabaseClient'
+import { supabase } from '../../services/supabaseClient'
 
-type LoginProps = { onSignIn: () => void; userEmail?: string }
+type LoginProps = { onSignIn: () => void }
 
 export function Login({ onSignIn }: LoginProps) {
   const [username, setUsername] = useState('')
@@ -29,6 +29,8 @@ export function Login({ onSignIn }: LoginProps) {
         return
       }
       onSignIn()
+    } catch {
+      setLoginError('Unable to connect to sign in. Check your connection and try again.')
     } finally {
       setSubmitting(false)
     }

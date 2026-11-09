@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { makeSessionNumber } from '../services/scanner'
-import { clearSession, loadSession, saveSession } from '../services/sessionStorage'
-import { EMPTY_SESSION, type Session } from '../types'
+import { makeSessionNumber } from '../../src/features/scanner/services/scanner'
+import { clearSession, getNextSessionNumber, loadSession, loadSessionSequence, saveSession } from '../../src/features/session/services/sessionStorage'
+import { EMPTY_SESSION, type Session } from '../../src/types'
 
 describe('session persistence', () => {
   beforeEach(() => {
@@ -15,6 +15,7 @@ describe('session persistence', () => {
   it('saves and rehydrates a valid session', () => {
     const session: Session = {
       business: 'Vedant Silver',
+      productName: 'Silver ornaments',
       number: 'BX-20260827-001',
       status: 'active',
       items: [{
@@ -24,12 +25,28 @@ describe('session persistence', () => {
         product: 'ABC-100',
         weight: 250,
         unit: 'g',
+        purity: '22K',
         scannedAt: '2026-01-01T00:00:00.000Z',
       }],
     }
 
     saveSession(session)
     expect(loadSession()).toEqual(session)
+  })
+
+  it('repairs item numbering when restoring a saved session', () => {
+    const session: Session = {
+      business: 'Vedant Silver',
+      number: 'BX-20260827-001',
+      status: 'active',
+      items: [
+        { id: 'item-1', itemNumber: 1, raw: 'A', weight: 1, unit: 'g', scannedAt: '2026-01-01T00:00:00.000Z' },
+        { id: 'item-2', itemNumber: 4, raw: 'B', weight: 2, unit: 'g', scannedAt: '2026-01-01T00:01:00.000Z' },
+      ],
+    }
+
+    saveSession(session)
+    expect(loadSession().items.map(item => item.itemNumber)).toEqual([1, 2])
   })
 
   it('clears session storage when invalid JSON is present', () => {
@@ -42,6 +59,18 @@ describe('session persistence', () => {
     localStorage.setItem('barcox-session', JSON.stringify({ business: 'X', items: [] }))
     expect(loadSession()).toEqual(EMPTY_SESSION)
     expect(localStorage.getItem('barcox-session')).toBeNull()
+  })
+
+  it('clears invalid session sequence data instead of incrementing malformed values', () => {
+    localStorage.setItem('barcox-session-sequence', JSON.stringify({ '20260101': { 'Vedant Silver': '2' } }))
+    expect(loadSessionSequence()).toEqual({})
+    expect(localStorage.getItem('barcox-session-sequence')).toBeNull()
+    expect(getNextSessionNumber('Vedant Silver', new Date(2026, 0, 1, 1))).toBe(1)
+  })
+
+  it('uses the local calendar date for session numbering', () => {
+    expect(getNextSessionNumber('Vedant Silver', new Date(2026, 0, 1, 1))).toBe(1)
+    expect(localStorage.getItem('barcox-session-sequence')).toContain('"20260101"')
   })
 
   it('removes current session from storage', () => {
