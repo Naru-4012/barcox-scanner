@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf'
-import type { Session } from '../types'
-import { formatDate, formatWeight, getItemDisplayName } from './scanner'
+import type { Item, Session } from '../../../types'
+import { formatDate, formatWeight, getItemDisplayName, weightInGrams } from '../../scanner/services/scanner'
 
 export function buildCsvRows(session: Session) {
   return [
@@ -20,6 +20,25 @@ export function getPdfFilename(session: Session) {
   const safeBusiness = (session.business || 'barcox').replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/_+/g, '_')
   const dateStamp = new Date().toISOString().slice(0, 10)
   return `${safeBusiness || 'barcox'}_${dateStamp}.pdf`
+}
+
+export function buildPdfItemCells(item: Item): string[] {
+  const raw = item.raw.trim()
+  const rawIsWeightOnly = /^[0-9]+(?:\.[0-9]+)?\s*(?:g|gm|gms|gram|grams|kg|kgs|mg|mgs)?$/i.test(raw)
+  const rawRepeatsProductAndWeight = Boolean(item.product) &&
+    raw.toLowerCase() === `${item.product}${item.weight}`.toLowerCase()
+  const details = [
+    item.size ? `Size ${item.size}` : '',
+    raw !== item.product && !rawIsWeightOnly && !rawRepeatsProductAndWeight ? raw : '',
+  ].filter(Boolean).join(' - ')
+
+  return [
+    item.itemNumber.toString(),
+    getItemDisplayName(item.product, item.itemNumber, item.scanType),
+    item.weight.toLocaleString('en-IN', { maximumFractionDigits: 3 }),
+    item.unit,
+    details,
+  ]
 }
 
 export function downloadCsv(session: Session) {
@@ -42,7 +61,13 @@ export function downloadPdf(session: Session, total: number) {
   const contentW = pageW - margin * 2
   const now = new Date()
   const violet: [number, number, number] = [124, 58, 237]
-  const columns = [{ title: '#', width: 14 }, { title: 'Product', width: 78 }, { title: 'Weight', width: 26 }, { title: 'Unit', width: 18 }, { title: 'Other details', width: contentW - 136 }]
+  const columns = [
+    { title: '#', width: 12, align: 'left' as const },
+    { title: 'Product', width: 80, align: 'left' as const },
+    { title: 'Weight', width: 26, align: 'right' as const },
+    { title: 'Unit', width: 16, align: 'left' as const },
+    { title: 'Other details', width: contentW - 134, align: 'left' as const },
+  ]
   const headerHeight = 9
   const rowHeight = 10
 
@@ -54,7 +79,8 @@ export function downloadPdf(session: Session, total: number) {
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(8)
     doc.setTextColor(100)
-    doc.text(`${session.business}  /  ${session.number || 'Working session'}`, margin, 22)
+    const reportIdentity = [session.business, session.productName, session.number || 'Working session'].filter(Boolean).join('  /  ')
+    doc.text(reportIdentity, margin, 22)
     doc.text(`Page ${doc.getNumberOfPages()}`, pageW - margin, 16, { align: 'right' })
     doc.text(`Generated on ${formatDate(now)}`, pageW - margin, 22, { align: 'right' })
     doc.setFont('helvetica', 'bold')
@@ -64,7 +90,10 @@ export function downloadPdf(session: Session, total: number) {
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(8)
     doc.setTextColor(100)
-    doc.text(`${Math.min(10, Math.max(0, session.items.length - (batchNumber - 1) * 10))} items`, pageW - margin, 32, { align: 'right' })
+    const itemCountLabel = batchNumber > batchCount
+      ? `${session.items.length} total items`
+      : `${Math.min(10, Math.max(0, session.items.length - (batchNumber - 1) * 10))} items`
+    doc.text(itemCountLabel, pageW - margin, 32, { align: 'right' })
   }
 
   function tableHeader(y: number) {
@@ -74,7 +103,14 @@ export function downloadPdf(session: Session, total: number) {
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(8)
     let x = margin + 3
-    columns.forEach(column => { doc.text(column.title, x, y + 1); x += column.width })
+    columns.forEach(column => {
+      if (column.align === 'right') {
+        doc.text(column.title, x + column.width - 3, y + 1, { align: 'right' })
+      } else {
+        doc.text(column.title, x, y + 1)
+      }
+      x += column.width
+    })
     doc.setTextColor(35, 35, 35)
     return y + headerHeight
   }
@@ -86,8 +122,7 @@ export function downloadPdf(session: Session, total: number) {
     pageHeader(batchIndex + 1, batchCount)
     let y = tableHeader(42)
     batchItems.forEach((item, itemIndex) => {
-      const details = [item.size ? `Size ${item.size}` : '', item.raw !== item.product ? item.raw : ''].filter(Boolean).join(' - ')
-      const cells = [item.itemNumber.toString(), getItemDisplayName(item.product, item.itemNumber, item.scanType), item.weight.toLocaleString('en-IN', { maximumFractionDigits: 3 }), item.unit, details]
+      const cells = buildPdfItemCells(item)
       if (itemIndex % 2 === 1) { doc.setFillColor(246, 244, 255); doc.rect(margin, y - 5, contentW, rowHeight, 'F') }
       doc.setDrawColor(225, 223, 235)
       doc.rect(margin, y - 5, contentW, rowHeight)
@@ -95,7 +130,8 @@ export function downloadPdf(session: Session, total: number) {
       cells.forEach((cell, index) => {
         doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(35, 35, 35)
         const text = doc.splitTextToSize(cell, columns[index].width - 6)
-        doc.text(text[0] || '', index === 2 ? x + columns[index].width - 3 : x, y + 1, index === 2 ? { align: 'right' } : undefined)
+        const rightAligned = columns[index].align === 'right'
+        doc.text(text[0] || '', rightAligned ? x + columns[index].width - 3 : x, y + 1, rightAligned ? { align: 'right' } : undefined)
         x += columns[index].width
       })
       y += rowHeight
@@ -104,21 +140,18 @@ export function downloadPdf(session: Session, total: number) {
     doc.line(margin, y + 5, pageW - margin, y + 5)
     doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(30, 27, 75)
     doc.text(`Batch ${batchIndex + 1} subtotal`, margin, y + 14)
-    doc.text(formatWeight(batchItems.reduce((sum, item) => sum + item.weight, 0)), pageW - margin, y + 14, { align: 'right' })
+    doc.text(formatWeight(batchItems.reduce((sum, item) => sum + weightInGrams(item.weight, item.unit), 0)), pageW - margin, y + 14, { align: 'right' })
   }
 
   doc.addPage()
   pageHeader(batchCount + 1, batchCount)
   doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(30, 27, 75)
-  doc.text('Report summary', margin, 48)
+  doc.text('Session summary', margin, 48)
   doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(35, 35, 35)
-  doc.text(`Products scanned: ${session.items.length}`, margin, 60)
-  doc.text(`Total net weight: ${formatWeight(total)}`, margin, 69)
-  doc.text(`Session: ${session.number || 'Not assigned'}`, margin, 78)
-  doc.setDrawColor(...violet); doc.line(margin, 88, pageW - margin, 88)
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(11)
-  doc.text(`Total: ${session.items.length} products`, margin, 101)
-  doc.text(formatWeight(total), pageW - margin, 101, { align: 'right' })
+  doc.text(`Business Name: ${session.business || '—'}`, margin, 61)
+  doc.text(`Product Name: ${session.productName || '—'}`, margin, 71)
+  doc.text(`Total Items: ${session.items.length}`, margin, 81)
+  doc.text(`Total Weight: ${formatWeight(total)}`, margin, 91)
 
   doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(120)
   const finalPage = doc.getNumberOfPages()

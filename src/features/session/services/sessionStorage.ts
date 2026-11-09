@@ -1,5 +1,6 @@
-import { EMPTY_SESSION, type Session } from '../types'
+import { EMPTY_SESSION, type Session } from '../../../types'
 import { z } from 'zod'
+import { renumberItems } from '../../../utils/items'
 
 const itemSchema = z.object({
   id: z.string().min(1).max(100),
@@ -9,17 +10,20 @@ const itemSchema = z.object({
   weight: z.number().finite().positive(),
   unit: z.string().min(1).max(12),
   size: z.string().max(200).optional(),
+  purity: z.string().max(40).optional(),
   scannedAt: z.string().datetime(),
   scanType: z.enum(['qr', 'barcode', 'manual']).optional(),
 })
 
 const sessionSchema = z.object({
   business: z.string().trim().min(1).max(120),
+  productName: z.string().trim().max(120).optional(),
   number: z.string().max(40),
   items: z.array(itemSchema).max(10000),
   status: z.enum(['active', 'paused', 'completed']),
   updatedAt: z.string().datetime().optional(),
 })
+const sessionSequenceSchema = z.record(z.string(), z.record(z.string(), z.number().int().nonnegative()))
 
 const SESSION_KEY = 'barcox-session'
 const SESSION_SEQUENCE_KEY = 'barcox-session-sequence'
@@ -35,7 +39,7 @@ export function loadSession(): Session {
       localStorage.removeItem(SESSION_KEY)
       return EMPTY_SESSION
     }
-    return result.data
+    return { ...result.data, items: renumberItems(result.data.items) }
   } catch {
     localStorage.removeItem(SESSION_KEY)
     return EMPTY_SESSION
@@ -56,12 +60,12 @@ export function loadSessionSequence(): SessionSequenceIndex {
   if (!saved) return {}
 
   try {
-    const parsed = JSON.parse(saved)
-    if (!parsed || typeof parsed !== 'object') {
+    const parsed = sessionSequenceSchema.safeParse(JSON.parse(saved))
+    if (!parsed.success) {
       localStorage.removeItem(SESSION_SEQUENCE_KEY)
       return {}
     }
-    return parsed as SessionSequenceIndex
+    return parsed.data
   } catch {
     localStorage.removeItem(SESSION_SEQUENCE_KEY)
     return {}
@@ -74,7 +78,7 @@ export function saveSessionSequence(sequence: SessionSequenceIndex) {
 
 export function getNextSessionNumber(vendor: string, date = new Date()): number {
   const safeVendor = vendor.trim() || 'General'
-  const dateKey = date.toISOString().slice(0, 10).replaceAll('-', '')
+  const dateKey = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`
   const sequence = loadSessionSequence()
   const vendorMap = sequence[dateKey] ?? {}
   const current = vendorMap[safeVendor] ?? 0

@@ -6,6 +6,7 @@ export type Item = {
   weight: number
   unit: string
   size?: string
+  purity?: string
   scannedAt: string
   scanType?: ScanType
 }
@@ -16,6 +17,7 @@ export type SessionStatus = 'active' | 'paused' | 'completed'
 
 export type Session = {
   business: string
+  productName?: string
   number: string
   items: Item[]
   status: SessionStatus
@@ -26,6 +28,7 @@ export type ParsedItem = Omit<Item, 'id' | 'itemNumber' | 'scannedAt'>
 
 export const EMPTY_SESSION: Session = {
   business: '',
+  productName: '',
   number: '',
   items: [],
   status: 'active',

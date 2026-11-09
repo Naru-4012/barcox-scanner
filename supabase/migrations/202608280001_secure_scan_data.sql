@@ -1,8 +1,5 @@
 -- Supabase already provides the PostgreSQL database for this project.
 -- This schema contains the application's tables.
--- These cleanup statements remove tables from the earlier default-schema query.
-drop table if exists public.scan_items cascade;
-drop table if exists public.scan_sessions cascade;
 
 create schema if not exists barcox;
 
@@ -25,6 +22,7 @@ create table barcox.scan_items (
   weight numeric(12,3) not null check (weight > 0),
   unit text not null default 'g' check (char_length(unit) between 1 and 12),
   size text,
+  purity text,
   scan_type text not null check (scan_type in ('qr', 'manual')),
   scanned_at timestamptz not null default now(),
   unique (session_id, item_number)
@@ -73,4 +71,3 @@ create policy "Users delete items in their sessions" on barcox.scan_items
     select 1 from barcox.scan_sessions s
     where s.id = session_id and s.owner_id = (select auth.uid())
   ));
-
